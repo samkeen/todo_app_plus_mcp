@@ -1,0 +1,28 @@
+[project]
+name = "todo_api"
+version = "0.1.0"
+description = "A simple Todo API built with FastAPI"
+readme = "README.md"
+requires-python = ">=3.8"
+# This is an educational app that includes both API (FastAPI) and UI (Flask) dependencies
+dependencies = [
+    # API dependencies
+    "fastapi>=0.103.1",
+    "uvicorn>=0.23.2",
+    "pydantic>=2.3.0",
+    "python-dotenv>=1.0.0",
+    "sqlalchemy>=2.0.20",
+    
+    # UI dependencies
+    "flask>=2.3.3",
+    "requests>=2.31.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "B"]
+target-version = "py38"
