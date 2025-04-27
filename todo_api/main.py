@@ -5,7 +5,7 @@ Main FastAPI application for the Todo API.
 from fastapi import FastAPI, HTTPException, Path, Depends
 from typing import List, Optional
 
-from todo_api import db
+from todo_api import json_db as db
 from todo_api.models import TodoCreate, TodoUpdate, TodoResponse
 
 # Create FastAPI app
