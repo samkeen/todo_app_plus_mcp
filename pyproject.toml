@@ -3,7 +3,7 @@ name = "todo_api"
 version = "0.1.0"
 description = "A simple Todo API built with FastAPI"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 # This is an educational app that includes both API (FastAPI) and UI (Flask) dependencies
 dependencies = [
     # API dependencies
@@ -12,13 +12,12 @@ dependencies = [
     "pydantic>=2.3.0",
     "python-dotenv>=1.0.0",
     "sqlalchemy>=2.0.20",
-    
     # UI dependencies
     "flask>=2.3.3",
     "requests>=2.31.0",
-    
     # MCP dependencies
-    "mcp>=1.0.0",
+    "mcp[cli]>=1.0.0",
+    "mcp-cli>=0.1.0",
 ]
 
 [build-system]
