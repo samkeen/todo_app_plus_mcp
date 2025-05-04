@@ -6,35 +6,72 @@ This module provides a simple file-based storage for todos using JSON.
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 import json
-import os
+from pathlib import Path
 import uuid
 import threading
+import shutil
 
-# Path to the JSON database file
-DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "todo_data.json")
+# Path to the JSON database files
+BASE_DIR = Path(__file__).parent.parent
+DB_FILE = BASE_DIR / "todo_data.json"
+SAMPLE_DB_FILE = BASE_DIR / "todo_data.sample.json"
 
 # Lock for thread safety when accessing the file
 file_lock = threading.Lock()
 
 def _load_todos() -> Dict[str, dict]:
-    """Load todos from the JSON file."""
-    if not os.path.exists(DB_FILE):
-        return {}
+    """
+    Load todos from the JSON file.
     
+    If todo_data.json doesn't exist, attempts to load from todo_data.sample.json
+    and creates todo_data.json from it.
+    """
     with file_lock:
+        # Check if the primary database file exists
+        if not DB_FILE.exists():
+            # If the sample file exists, use it as a template
+            if SAMPLE_DB_FILE.exists():
+                try:
+                    with SAMPLE_DB_FILE.open('r') as sample_file:
+                        todos = json.load(sample_file)
+                    
+                    # Create the data file from the sample
+                    with DB_FILE.open('w') as data_file:
+                        json.dump(todos, data_file, indent=2)
+                    
+                    return todos
+                except (json.JSONDecodeError, FileNotFoundError):
+                    # If sample file has issues, create an empty database
+                    empty_db = {}
+                    with DB_FILE.open('w') as f:
+                        json.dump(empty_db, f, indent=2)
+                    return empty_db
+            else:
+                # Neither file exists, create an empty database
+                empty_db = {}
+                DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+                with DB_FILE.open('w') as f:
+                    json.dump(empty_db, f, indent=2)
+                return empty_db
+        
+        # Normal case: load from the existing data file
         try:
-            with open(DB_FILE, 'r') as f:
+            with DB_FILE.open('r') as f:
                 return json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
-            return {}
+            # Handle corrupted JSON file
+            empty_db = {}
+            with DB_FILE.open('w') as f:
+                json.dump(empty_db, f, indent=2)
+            return empty_db
 
 def _save_todos(todos: Dict[str, dict]) -> None:
     """Save todos to the JSON file."""
     with file_lock:
         # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
+        DB_FILE.parent.mkdir(parents=True, exist_ok=True)
         
-        with open(DB_FILE, 'w') as f:
+        with DB_FILE.open('w') as f:
             json.dump(todos, f, indent=2)
 
 def get_all_todos() -> List[dict]:

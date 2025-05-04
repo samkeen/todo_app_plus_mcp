@@ -13,3 +13,6 @@ You implement robust testing practices, including unit tests, to ensure code rel
 ## Tools
 
 We use UV (https://docs.astral.sh/uv/) for virtual environment and dependency management
+
+## General Python preferences
+- prefer pathlib.Path over os.path 
