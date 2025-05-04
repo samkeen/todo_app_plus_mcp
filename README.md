@@ -7,7 +7,7 @@ A Todo application with a FastAPI backend, a Flask UI frontend, and a Model Cont
 - `todo_api/` - FastAPI backend
 - `todo_ui/` - Flask UI frontend
 - `todo_mcp/` - Model Context Protocol server
-- `start_app.sh` - Bootstrap script to start API and UI services
+- `todo_data.sample.json` - Sample data that will be used to create todo_data.json on first run
 
 ## Project Setup
 
@@ -19,64 +19,56 @@ This is an educational application that uses `uv` for dependency management with
    uv pip install -e .
    ```
 
-## Quick Start
+## Running the Application
 
-The easiest way to run both the API and UI is with the bootstrap script:
+The application consists of two main components that need to be running simultaneously:
+1. The Todo API (Backend) - Serves data via REST endpoints
+2. The Todo UI (Frontend) - Provides a web interface
 
-```
-# Start both API and UI servers
-./start_app.sh
-```
+### Running the Todo API (Backend)
 
-This script:
-- Checks if servers are already running on ports 8000 and 5000
-- Stops them if necessary
-- Starts the API server first, then the UI server
-- Provides information about where to access the application
-- Can be terminated with Ctrl+C to stop both servers
+The API is built with FastAPI and needs to be started first as the UI depends on it.
 
-## Todo API (Backend)
-
-A simple Todo API built with FastAPI.
-
-### Running the API Server Manually
-
-```
-# Use uv run to execute uvicorn in the virtual environment
+```bash
+# Start the API server on port 8000
 uv run uvicorn todo_api.main:app --reload --port 8000
 ```
 
-### API Endpoints
+Once running, the API will be available at:
+- http://localhost:8000
+
+The API also provides interactive documentation at:
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+### Running the Todo UI (Frontend)
+
+After starting the API server, run the UI server in a separate terminal:
+
+```bash
+# Start the UI server on port 8001
+uv run python -m todo_ui.app
+```
+
+Once running, the web interface will be available at:
+- http://localhost:8001
+
+![Todo UI](./docs/img/ui.png)
+
+### Data Storage
+
+The application uses a JSON file for data storage:
+- On first run, the application will check for the existence of `todo_data.json`
+- If `todo_data.json` doesn't exist, it will create one based on `todo_data.sample.json`
+- Your personal todo data is stored in `todo_data.json` which is ignored by Git to prevent accidentally committing personal data
+
+## API Endpoints
 
 - `GET /todos`: Get all todos
 - `GET /todos/{todo_id}`: Get a specific todo
 - `POST /todos`: Create a new todo
 - `PUT /todos/{todo_id}`: Update a todo
 - `DELETE /todos/{todo_id}`: Delete a todo
-
-### API Documentation
-
-Once the API server is running, you can access the interactive API documentation at:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
-## Todo UI (Frontend)
-
-A Flask-based web interface for interacting with the Todo API.
-
-### Running the Flask UI Server Manually
-
-```
-# Use uv run to execute python in the virtual environment
-uv run python -m todo_ui.app
-```
-
-### Accessing the UI
-
-After starting both servers, you can access the Todo UI at:
-- http://localhost:5000
-
-Note: Make sure the API server is running before starting the UI server, as the UI depends on the API to function properly.
 
 ## Todo MCP Server
 

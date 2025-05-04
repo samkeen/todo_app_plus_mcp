@@ -1,6 +1,7 @@
 """
 Flask UI application for the Todo API.
 """
+
 import os
 import requests
 from flask import Flask, render_template, request, redirect, url_for, flash
@@ -19,12 +20,12 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 
 # Custom filter for datetime formatting
-@app.template_filter('datetime')
+@app.template_filter("datetime")
 def format_datetime(value):
     """Format a datetime string to a more readable format."""
     try:
-        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-        return dt.strftime('%Y-%m-%d %H:%M:%S')
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
     except (ValueError, AttributeError):
         return value
 
@@ -61,9 +62,9 @@ def new_todo():
         todo_data = {
             "title": request.form.get("title"),
             "description": request.form.get("description", ""),
-            "completed": request.form.get("completed") == "on"
+            "completed": request.form.get("completed") == "on",
         }
-        
+
         try:
             response = requests.post(f"{API_BASE_URL}/todos", json=todo_data)
             if response.status_code == 201:
@@ -73,7 +74,7 @@ def new_todo():
                 handle_api_error(response)
         except requests.RequestException as e:
             flash(f"API Connection Error: {str(e)}", "error")
-    
+
     return render_template("new.html")
 
 
@@ -100,12 +101,12 @@ def edit_todo(todo_id):
         todo_data = {
             "title": request.form.get("title"),
             "description": request.form.get("description", ""),
-            "completed": request.form.get("completed") == "on"
+            "completed": request.form.get("completed") == "on",
         }
-        
+
         # Remove None values
         todo_data = {k: v for k, v in todo_data.items() if v is not None}
-        
+
         try:
             response = requests.put(f"{API_BASE_URL}/todos/{todo_id}", json=todo_data)
             if response.status_code == 200:
@@ -115,7 +116,7 @@ def edit_todo(todo_id):
                 handle_api_error(response)
         except requests.RequestException as e:
             flash(f"API Connection Error: {str(e)}", "error")
-    
+
     # Get current todo data for the form
     try:
         response = requests.get(f"{API_BASE_URL}/todos/{todo_id}")
@@ -141,7 +142,7 @@ def delete_todo(todo_id):
             handle_api_error(response)
     except requests.RequestException as e:
         flash(f"API Connection Error: {str(e)}", "error")
-    
+
     return redirect(url_for("index"))
 
 
@@ -155,7 +156,7 @@ def toggle_todo(todo_id):
             todo = get_response.json()
             # Toggle the completed status
             update_data = {"completed": not todo["completed"]}
-            
+
             # Update the todo
             update_response = requests.put(f"{API_BASE_URL}/todos/{todo_id}", json=update_data)
             if update_response.status_code == 200:
@@ -167,11 +168,11 @@ def toggle_todo(todo_id):
             handle_api_error(get_response)
     except requests.RequestException as e:
         flash(f"API Connection Error: {str(e)}", "error")
-    
+
     return redirect(url_for("index"))
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("FLASK_PORT", 5000))
+    port = int(os.getenv("FLASK_PORT", 8001))
     debug = os.getenv("FLASK_DEBUG", "true").lower() == "true"
     app.run(debug=debug, port=port)
