@@ -67,9 +67,8 @@ A Flask-based web interface for interacting with the Todo API.
 ### Running the Flask UI Server Manually
 
 ```
-cd todo_ui
 # Use uv run to execute python in the virtual environment
-uv run python app.py
+uv run python -m todo_ui.app
 ```
 
 ### Accessing the UI
@@ -87,7 +86,7 @@ An implementation of the [Model Context Protocol (MCP)](https://modelcontextprot
 
 ```bash
 # First, ensure dependencies are installed
-uv pip install -e .
+uv sync
 
 # Run the MCP server
 uv run python -m todo_mcp.server
@@ -116,7 +115,7 @@ The easiest way to test your MCP server is using the built-in MCP Inspector tool
 
 ```bash
 # Install MCP CLI
-pip install mcp-cli
+uv add mcp-cli
 
 # Start the MCP Inspector
 mcp dev todo_mcp/server.py
