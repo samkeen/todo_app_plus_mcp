@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "A simple Todo API built with FastAPI"
 readme = "README.md"
 requires-python = ">=3.12"
+license = { text = "MIT" }
 # This is an educational app that includes both API (FastAPI) and UI (Flask) dependencies
 dependencies = [
     # API dependencies
@@ -19,6 +20,8 @@ dependencies = [
     "mcp[cli]>=1.0.0",
     "mcp-cli>=0.1.0",
     "anthropic>=0.50.0",
+    "rich>=14.0.0",
+    "typer>=0.15.3",
 ]
 
 [build-system]
