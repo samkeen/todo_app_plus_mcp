@@ -35,6 +35,7 @@ async def create_todo(todo_data: TodoCreate):
         title=todo_data.title,
         description=todo_data.description or "",
         completed=todo_data.completed,
+        due_date=todo_data.due_date.isoformat() if todo_data.due_date else None,
     )
 
 
@@ -53,7 +54,13 @@ async def update_todo(
     todo_id: str = Path(..., description="The ID of the todo to update"),
 ):
     """Update an existing todo."""
-    todo = db.update_todo(todo_id, todo_data.dict(exclude_unset=True))
+    update_data = todo_data.model_dump(exclude_unset=True)
+
+    # Convert datetime to ISO format string if present
+    if "due_date" in update_data and update_data["due_date"]:
+        update_data["due_date"] = update_data["due_date"].isoformat()
+
+    todo = db.update_todo(todo_id, update_data)
     if not todo:
         raise HTTPException(status_code=404, detail=f"Todo with ID {todo_id} not found")
     return todo

@@ -37,11 +37,22 @@
                 <strong>ID:</strong> {{ todo.id }}
             </div>
             <div class="meta-item">
-                <strong>Created:</strong> {{ todo.created_at }}
+                <strong>Created:</strong> {{ todo.created_at|datetime }}
             </div>
             <div class="meta-item">
-                <strong>Last Updated:</strong> {{ todo.updated_at }}
+                <strong>Last Updated:</strong> {{ todo.updated_at|datetime }}
             </div>
+            {% if todo.due_date %}
+            <div class="meta-item">
+                <strong>Due Date:</strong> {{ todo.due_date|dateonly }}
+                {% if not todo.completed and todo.due_date %}
+                    {% set due_date = todo.due_date|replace('Z', '+00:00')|replace(' ', 'T') %}
+                    {% if now > due_date %}
+                        <span class="badge badge-danger">Overdue</span>
+                    {% endif %}
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
         
         <div class="actions">

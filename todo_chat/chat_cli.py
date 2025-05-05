@@ -405,7 +405,6 @@ Key behaviors:
 - If the user implies a due date for the task, unless they specify the exact date, always calculate
   the due date to be in the future relative to today. For example, "call mom tomorrow" should be 
   (today's date + one day). If today is 01-01-2025, then tomorrow is 01-02-2025.
-- If a due date is implied for a task, add the calulated due date to the task description  
 - Interpret statements like "call mom tomorrow" as a request to create a todo with that title.
 - Extract relevant details from user input to create todo items with descriptive titles and useful descriptions.
 - ALWAYS use the provided tools to interact with the todo list.

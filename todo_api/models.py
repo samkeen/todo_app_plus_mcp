@@ -14,6 +14,7 @@ class TodoBase(BaseModel):
         default="", max_length=500, description="Detailed description of the todo item"
     )
     completed: bool = Field(default=False, description="Whether the todo is completed")
+    due_date: Optional[datetime] = Field(default=None, description="Optional due date for the todo item")
 
 
 class TodoCreate(TodoBase):
@@ -26,6 +27,7 @@ class TodoUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = None
     completed: Optional[bool] = None
+    due_date: Optional[datetime] = None
 
 
 class TodoResponse(TodoBase):

@@ -12,6 +12,7 @@
     "title": "New Todo",
     "description": "this is new",
     "completed": false,
+    "due_date": "2025-04-27T09:47:53.475877",
     "created_at": "2025-04-27T09:47:53.475877",
     "updated_at": "2025-04-27T09:47:53.475877"
   }

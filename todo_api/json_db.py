@@ -84,7 +84,7 @@ def get_todo(todo_id: str) -> Optional[dict]:
     todos_db = _load_todos()
     return todos_db.get(todo_id)
 
-def create_todo(title: str, description: str = "", completed: bool = False) -> dict:
+def create_todo(title: str, description: str = "", completed: bool = False, due_date: Optional[str] = None) -> dict:
     """Create a new todo."""
     todos_db = _load_todos()
     
@@ -96,7 +96,8 @@ def create_todo(title: str, description: str = "", completed: bool = False) -> d
         "description": description,
         "completed": completed,
         "created_at": created_at,
-        "updated_at": created_at
+        "updated_at": created_at,
+        "due_date": due_date
     }
     todos_db[todo_id] = todo
     
@@ -119,6 +120,8 @@ def update_todo(todo_id: str, data: dict) -> Optional[dict]:
         todo["description"] = data["description"]
     if "completed" in data:
         todo["completed"] = data["completed"]
+    if "due_date" in data:
+        todo["due_date"] = data["due_date"]
     
     # Update the 'updated_at' timestamp
     todo["updated_at"] = datetime.now().isoformat()

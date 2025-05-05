@@ -11,13 +11,24 @@
 {% if todos %}
     <div class="todo-list">
         {% for todo in todos %}
-        <div class="todo-item {% if todo.completed %}completed{% endif %}">
+        <div class="todo-item {% if todo.completed %}completed{% endif %} {% if not todo.completed and todo.due_date and todo.due_date < now %}overdue{% endif %}">
             <div class="todo-content">
                 <h3>{{ todo.title }}</h3>
                 <p>{{ todo.description }}</p>
                 <div class="todo-meta">
                     <span class="created">Created: {{ todo.created_at|datetime }}</span>
                     <span class="updated">Updated: {{ todo.updated_at|datetime }}</span>
+                    {% if todo.due_date %}
+                    <span class="due-date">
+                        Due: {{ todo.due_date|dateonly }}
+                        {% if not todo.completed and todo.due_date %}
+                            {% set due_date = todo.due_date|replace('Z', '+00:00')|replace(' ', 'T') %}
+                            {% if now > due_date %}
+                                <span class="badge badge-danger">Overdue</span>
+                            {% endif %}
+                        {% endif %}
+                    </span>
+                    {% endif %}
                 </div>
             </div>
             <div class="todo-actions">

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from mcp.server.fastmcp import FastMCP, Context
 from pydantic import BaseModel, Field
+from datetime import datetime
 
 # Ensure the parent directory is in the Python path for proper imports
 # This approach is more portable than hardcoding absolute paths
@@ -37,6 +38,7 @@ class TodoData(BaseModel):
         default="", max_length=500, description="Detailed description of the todo item"
     )
     completed: bool = Field(default=False, description="Whether the todo is completed")
+    due_date: Optional[str] = Field(default=None, description="Optional due date for the todo item (ISO format string)")
 
 
 class TodoUpdateData(BaseModel):
@@ -49,6 +51,7 @@ class TodoUpdateData(BaseModel):
         None, max_length=500, description="New description for the todo item"
     )
     completed: Optional[bool] = Field(None, description="New completion status for the todo item")
+    due_date: Optional[str] = Field(None, description="Optional due date for the todo item (ISO format string)")
 
 
 # Define MCP Tools
@@ -102,7 +105,10 @@ async def create_todo(todo: TodoData, ctx: Context) -> Dict[str, Any]:
     """
     try:
         created_todo = db.create_todo(
-            title=todo.title, description=todo.description or "", completed=todo.completed
+            title=todo.title, 
+            description=todo.description or "", 
+            completed=todo.completed,
+            due_date=todo.due_date
         )
         return created_todo
     except Exception as e:
@@ -115,6 +121,7 @@ async def create_todo(todo: TodoData, ctx: Context) -> Dict[str, Any]:
             "completed": False,
             "created_at": "",
             "updated_at": "",
+            "due_date": None
         }
 
 
@@ -134,7 +141,7 @@ async def update_todo(
     """
     try:
         # Convert Pydantic model to dict and exclude unset fields
-        update_data = changes.dict(exclude_unset=True)
+        update_data = changes.model_dump(exclude_unset=True)
         todo = db.update_todo(todo_id, update_data)
         return todo
     except Exception as e:
@@ -143,7 +150,7 @@ async def update_todo(
 
 
 @mcp.tool()
-async def delete_todo(todo_id: str, ctx: Context) -> bool:
+async def delete_todo(todo_id: str, ctx: Context) -> Dict[str, Any]:
     """
     Delete a todo item by its ID.
 
@@ -155,10 +162,13 @@ async def delete_todo(todo_id: str, ctx: Context) -> bool:
     """
     try:
         success = db.delete_todo(todo_id)
-        return success
+        return {"success": success}
     except Exception as e:
         ctx.runtime.logger.error(f"Error deleting todo {todo_id}: {str(e)}")  # type: ignore
-        return False
+        return {
+            "success": False,
+            "error": str(e),
+        }
 
 
 @mcp.tool()
@@ -175,34 +185,51 @@ async def get_todo_stats(ctx: Context) -> Dict[str, Any]:
         total = len(todos)
         completed = sum(1 for todo in todos if todo["completed"])
         completion_percentage = (completed / total * 100) if total > 0 else 0
-
-        # Add more insightful statistics
-        oldest_todo = min(todos, key=lambda x: x["created_at"]) if todos else None
-        newest_todo = max(todos, key=lambda x: x["created_at"]) if todos else None
-        incomplete_todos = [todo for todo in todos if not todo["completed"]]
-
+        
+        # Count todos with due dates, and count overdue todos
+        todos_with_due_dates = [todo for todo in todos if todo.get("due_date")]
+        overdue_todos = []
+        upcoming_todos = []
+        
+        now = datetime.now()
+        
+        for todo in todos_with_due_dates:
+            if not todo["completed"] and todo.get("due_date"):
+                try:
+                    due_date = datetime.fromisoformat(todo["due_date"].replace("Z", "+00:00"))
+                    if due_date < now:
+                        overdue_todos.append(todo)
+                    else:
+                        upcoming_todos.append(todo)
+                except (ValueError, TypeError):
+                    # Skip todos with invalid date format
+                    pass
+        
         return {
-            "total_todos": total,
-            "completed_todos": completed,
-            "incomplete_todos": total - completed,
-            "completion_percentage": round(completion_percentage, 2),
+            "total_count": total,
+            "completed_count": completed,
+            "incomplete_count": total - completed,
+            "completion_percentage": completion_percentage,
             "has_todos": total > 0,
-            "oldest_todo_id": oldest_todo["id"] if oldest_todo else None,
-            "oldest_todo_title": oldest_todo["title"] if oldest_todo else None,
-            "newest_todo_id": newest_todo["id"] if newest_todo else None,
-            "newest_todo_title": newest_todo["title"] if newest_todo else None,
-            "incomplete_todo_count": len(incomplete_todos),
+            "todos_with_due_dates": len(todos_with_due_dates),
+            "overdue_todos": len(overdue_todos),
+            "upcoming_todos": len(upcoming_todos)
         }
     except Exception as e:
         ctx.runtime.logger.error(f"Error getting todo stats: {str(e)}")  # type: ignore
         return {
-            "total_todos": 0,
-            "completed_todos": 0,
-            "incomplete_todos": 0,
-            "completion_percentage": 0,
-            "has_todos": False,
             "error": str(e),
         }
+
+
+# Helper function to format dates
+def format_date_only(date_str):
+    """Format a date string to show only the date part (YYYY-MM-DD)."""
+    try:
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        return dt.strftime("%Y-%m-%d")
+    except (ValueError, AttributeError, TypeError):
+        return date_str
 
 
 # Add prompt capability
@@ -242,6 +269,23 @@ async def todo_analysis(ctx: Context, todos: Optional[List[Dict[str, Any]]] = No
         # Find todos by completion status
         incomplete_todos = [todo for todo in todos if not todo["completed"]]
         completed_todos = [todo for todo in todos if todo["completed"]]
+        
+        # Find todos with due dates
+        now = datetime.now()
+        overdue_todos = []
+        upcoming_todos = []
+        
+        for todo in incomplete_todos:
+            if todo.get("due_date"):
+                try:
+                    due_date = datetime.fromisoformat(todo["due_date"].replace("Z", "+00:00"))
+                    if due_date < now:
+                        overdue_todos.append(todo)
+                    else:
+                        upcoming_todos.append(todo)
+                except (ValueError, TypeError):
+                    # Skip todos with invalid date format
+                    pass
 
         # Create analysis prompt
         prompt = f"""
@@ -252,14 +296,21 @@ async def todo_analysis(ctx: Context, todos: Optional[List[Dict[str, Any]]] = No
         - Completed todos: {completed} ({completion_percentage:.1f}%)
         - Incomplete todos: {total - completed} ({100 - completion_percentage:.1f}%)
         """
+        
+        # Add due date statistics if relevant
+        if overdue_todos or upcoming_todos:
+            prompt += f"""
+        - Overdue todos: {len(overdue_todos)}
+        - Upcoming todos: {len(upcoming_todos)}
+        """
 
         # Only add timeline section if we have todos
         if oldest_todo and newest_todo:
             prompt += f"""
         
         ## Timeline
-        - Oldest todo: "{oldest_todo['title']}" ({oldest_todo['created_at']})
-        - Newest todo: "{newest_todo['title']}" ({newest_todo['created_at']})
+        - Oldest todo: "{oldest_todo['title']}" (Created: {format_date_only(oldest_todo['created_at'])})
+        - Newest todo: "{newest_todo['title']}" (Created: {format_date_only(newest_todo['created_at'])})
         """
 
         prompt += f"""
@@ -271,12 +322,34 @@ async def todo_analysis(ctx: Context, todos: Optional[List[Dict[str, Any]]] = No
 
         if incomplete_todos:
             for todo in incomplete_todos[:5]:  # Show up to 5 incomplete todos
-                prompt += f"- ⬜️ **{todo['title']}**: {todo['description']}\n"
+                due_date_str = ""
+                if todo.get("due_date"):
+                    try:
+                        due_date_str = f" (Due: {format_date_only(todo['due_date'])})"
+                    except (ValueError, TypeError):
+                        pass
+                prompt += f"- ⬜️ **{todo['title']}**{due_date_str}: {todo['description']}\n"
 
             if len(incomplete_todos) > 5:
                 prompt += f"- ... and {len(incomplete_todos) - 5} more incomplete todos\n"
         else:
             prompt += "- No incomplete todos! Great job! 🎉\n"
+            
+        # Add overdue section if there are overdue todos
+        if overdue_todos:
+            prompt += f"""
+        
+        ### Overdue Todos ({len(overdue_todos)})
+        """
+            for todo in overdue_todos[:3]:  # Show up to 3 overdue todos
+                try:
+                    due_date_str = f" (Due: {format_date_only(todo['due_date'])})"
+                except (ValueError, TypeError):
+                    due_date_str = ""
+                prompt += f"- 🚨 **{todo['title']}**{due_date_str}: {todo['description']}\n"
+            
+            if len(overdue_todos) > 3:
+                prompt += f"- ... and {len(overdue_todos) - 3} more overdue todos\n"
 
         prompt += f"""
         
@@ -310,6 +383,9 @@ async def todo_analysis(ctx: Context, todos: Optional[List[Dict[str, Any]]] = No
 
         if len(incomplete_todos) == 0:
             prompt += "- All todos are complete! Time to add new goals or projects.\n"
+            
+        if len(overdue_todos) > 0:
+            prompt += "- You have overdue tasks. Consider addressing these first or rescheduling them if needed.\n"
 
         return prompt
 

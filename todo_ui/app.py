@@ -30,6 +30,17 @@ def format_datetime(value):
         return value
 
 
+# Custom filter for date-only formatting
+@app.template_filter("dateonly")
+def format_dateonly(value):
+    """Format a datetime string to show only the date part."""
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return dt.strftime("%Y-%m-%d")
+    except (ValueError, AttributeError):
+        return value
+
+
 def handle_api_error(response):
     """Handle API errors and provide flash messages."""
     try:
@@ -46,24 +57,33 @@ def index():
         response = requests.get(f"{API_BASE_URL}/todos")
         if response.status_code == 200:
             todos = response.json()
-            return render_template("index.html", todos=todos)
+            # Pass current time to template for overdue status checking
+            now = datetime.now().isoformat()
+            return render_template("index.html", todos=todos, now=now)
         else:
             handle_api_error(response)
-            return render_template("index.html", todos=[])
+            return render_template("index.html", todos=[], now=datetime.now().isoformat())
     except requests.RequestException as e:
         flash(f"API Connection Error: {str(e)}", "error")
-        return render_template("index.html", todos=[])
+        return render_template("index.html", todos=[], now=datetime.now().isoformat())
 
 
 @app.route("/todo/new", methods=["GET", "POST"])
 def new_todo():
     """Create a new todo."""
     if request.method == "POST":
+        # Process due date if provided
+        due_date = request.form.get("due_date")
+        
         todo_data = {
             "title": request.form.get("title"),
             "description": request.form.get("description", ""),
             "completed": request.form.get("completed") == "on",
         }
+        
+        # Add due_date if it exists
+        if due_date:
+            todo_data["due_date"] = due_date
 
         try:
             response = requests.post(f"{API_BASE_URL}/todos", json=todo_data)
@@ -85,7 +105,9 @@ def view_todo(todo_id):
         response = requests.get(f"{API_BASE_URL}/todos/{todo_id}")
         if response.status_code == 200:
             todo = response.json()
-            return render_template("view.html", todo=todo)
+            # Pass current time to template for overdue status checking
+            now = datetime.now().isoformat()
+            return render_template("view.html", todo=todo, now=now)
         else:
             handle_api_error(response)
             return redirect(url_for("index"))
@@ -98,11 +120,21 @@ def view_todo(todo_id):
 def edit_todo(todo_id):
     """Edit an existing todo."""
     if request.method == "POST":
+        # Process due date if provided
+        due_date = request.form.get("due_date")
+        
         todo_data = {
             "title": request.form.get("title"),
             "description": request.form.get("description", ""),
             "completed": request.form.get("completed") == "on",
         }
+        
+        # Add due_date if it exists
+        if due_date:
+            todo_data["due_date"] = due_date
+        else:
+            # If due date field was cleared, set it to None
+            todo_data["due_date"] = None
 
         # Remove None values
         todo_data = {k: v for k, v in todo_data.items() if v is not None}
