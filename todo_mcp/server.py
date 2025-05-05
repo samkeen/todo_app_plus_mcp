@@ -4,6 +4,13 @@ Todo MCP Server
 This module implements a Model Context Protocol (MCP) server for the Todo API
 using the FastMCP framework. It exposes Todo operations as MCP tools that can be
 used by AI assistants like Claude.
+
+The Model Context Protocol (MCP) is an open protocol that standardizes how AI models 
+interact with external tools and systems. This server demonstrates:
+1. How to create a FastMCP server with custom tools
+2. How to expose database operations as AI-callable functions
+3. How to define parameter schemas using Pydantic models
+4. How to handle errors and provide meaningful feedback
 """
 
 import os
@@ -31,7 +38,13 @@ mcp = FastMCP("Todo MCP Server")
 
 # Define Pydantic models for MCP tools
 class TodoData(BaseModel):
-    """Model for creating/updating todo items via MCP."""
+    """
+    Model for creating/updating todo items via MCP.
+    
+    This Pydantic model defines the schema for todo item creation,
+    including field types, constraints and descriptions that will be 
+    exposed to the AI through the MCP protocol.
+    """
 
     title: str = Field(..., min_length=1, max_length=100, description="Title of the todo item")
     description: Optional[str] = Field(
@@ -42,7 +55,12 @@ class TodoData(BaseModel):
 
 
 class TodoUpdateData(BaseModel):
-    """Model for updating todo items via MCP."""
+    """
+    Model for updating todo items via MCP.
+    
+    This model makes all fields optional, allowing partial updates to todo items.
+    The AI can specify only the fields it wants to change.
+    """
 
     title: Optional[str] = Field(
         None, min_length=1, max_length=100, description="New title for the todo item"
@@ -61,14 +79,23 @@ class TodoUpdateData(BaseModel):
 async def list_todos(ctx: Context) -> List[Dict[str, Any]]:
     """
     List all todos in the system.
-
+    
+    This is an MCP tool that retrieves all todo items from the database.
+    It demonstrates how to create a simple tool with no parameters.
+    
+    Args:
+        ctx: The MCP context object, which provides access to runtime services
+             like logging and tool metadata.
+             
     Returns:
         A list of all todo items with their details.
     """
     try:
+        # Fetch all todos from the database
         todos = db.get_all_todos()
         return todos
     except Exception as e:
+        # Log the error using the MCP context logger
         ctx.runtime.logger.error(f"Error listing todos: {str(e)}")  # type: ignore
         return []
 
@@ -77,14 +104,18 @@ async def list_todos(ctx: Context) -> List[Dict[str, Any]]:
 async def get_todo(todo_id: str, ctx: Context) -> Optional[Dict[str, Any]]:
     """
     Get a specific todo by its ID.
-
+    
+    This tool demonstrates retrieving a single item using a string identifier.
+    
     Args:
         todo_id: The unique identifier of the todo item.
-
+        ctx: The MCP context object for logging and runtime services.
+        
     Returns:
         The todo item details if found, or null if not found.
     """
     try:
+        # Fetch a specific todo by ID
         todo = db.get_todo(todo_id)
         return todo
     except Exception as e:
@@ -96,14 +127,21 @@ async def get_todo(todo_id: str, ctx: Context) -> Optional[Dict[str, Any]]:
 async def create_todo(todo: TodoData, ctx: Context) -> Dict[str, Any]:
     """
     Create a new todo item.
-
+    
+    This tool demonstrates:
+    1. Using a Pydantic model as a complex parameter
+    2. Converting the model to appropriate database parameters
+    3. Proper error handling with meaningful return values
+    
     Args:
-        todo: The todo item details to create.
-
+        todo: The todo item details to create, validated by the TodoData model.
+        ctx: The MCP context object for logging and runtime services.
+        
     Returns:
         The created todo item with its assigned ID.
     """
     try:
+        # Create a new todo using the provided data
         created_todo = db.create_todo(
             title=todo.title, 
             description=todo.description or "", 
@@ -112,6 +150,8 @@ async def create_todo(todo: TodoData, ctx: Context) -> Dict[str, Any]:
         )
         return created_todo
     except Exception as e:
+        # Log the error but also return a structured error response
+        # This ensures the AI gets meaningful feedback it can interpret
         ctx.runtime.logger.error(f"Error creating todo: {str(e)}")  # type: ignore
         # Return a minimal error object that matches the expected structure
         return {
@@ -131,60 +171,169 @@ async def update_todo(
 ) -> Optional[Dict[str, Any]]:
     """
     Update an existing todo item.
-
+    
+    This tool demonstrates:
+    1. Combining a simple parameter (todo_id) with a complex parameter (changes)
+    2. Using a model specifically designed for updates with optional fields
+    3. Returning appropriate results based on success or failure
+    
     Args:
         todo_id: The unique identifier of the todo to update.
-        changes: The fields to update on the todo item.
-
+        changes: The fields to update on the todo item, validated by TodoUpdateData.
+        ctx: The MCP context object for logging and runtime services.
+        
     Returns:
         The updated todo item if found, or null if not found.
     """
     try:
-        # Convert Pydantic model to dict and exclude unset fields
-        update_data = changes.model_dump(exclude_unset=True)
-        todo = db.update_todo(todo_id, update_data)
-        return todo
+        # Convert the Pydantic model to a dictionary, removing None values
+        update_data = changes.dict(exclude_unset=True, exclude_none=True)
+        
+        # Update the todo with the filtered data
+        updated_todo = db.update_todo(todo_id, update_data)
+        return updated_todo
     except Exception as e:
         ctx.runtime.logger.error(f"Error updating todo {todo_id}: {str(e)}")  # type: ignore
         return None
 
 
 @mcp.tool()
-async def delete_todo(todo_id: str, ctx: Context) -> Dict[str, Any]:
+async def delete_todo(todo_id: str, ctx: Context) -> bool:
     """
     Delete a todo item by its ID.
-
+    
+    This tool demonstrates:
+    1. Using a simple string parameter
+    2. Returning a boolean result to indicate success/failure
+    3. Safe error handling
+    
     Args:
         todo_id: The unique identifier of the todo to delete.
-
+        ctx: The MCP context object for logging and runtime services.
+        
     Returns:
         True if the todo was deleted, False if not found or if an error occurred.
     """
     try:
-        success = db.delete_todo(todo_id)
-        return {"success": success}
+        # Delete the todo and return the result
+        result = db.delete_todo(todo_id)
+        return result
     except Exception as e:
         ctx.runtime.logger.error(f"Error deleting todo {todo_id}: {str(e)}")  # type: ignore
-        return {
-            "success": False,
-            "error": str(e),
-        }
+        return False
 
 
 @mcp.tool()
 async def get_todo_stats(ctx: Context) -> Dict[str, Any]:
     """
     Get statistics about todos in the system.
-
+    
+    This tool demonstrates:
+    1. Computing derived data from database objects
+    2. Structuring a complex response with multiple metrics
+    3. Error handling for robustness
+    
     Returns:
         Statistics including total count, completed count, completion percentage,
         and whether there are any todos in the system.
     """
     try:
+        # Fetch all todos to compute statistics
         todos = db.get_all_todos()
+        
+        # Count totals and completed
         total = len(todos)
-        completed = sum(1 for todo in todos if todo["completed"])
+        completed = sum(1 for todo in todos if todo.get("completed", False))
+        
+        # Compute completion percentage, handling division by zero
         completion_percentage = (completed / total * 100) if total > 0 else 0
+        
+        # Return comprehensive statistics
+        return {
+            "total_count": total,
+            "completed_count": completed,
+            "incomplete_count": total - completed,
+            "completion_percentage": round(completion_percentage, 2),
+            "has_todos": total > 0,
+        }
+    except Exception as e:
+        ctx.runtime.logger.error(f"Error getting todo stats: {str(e)}")  # type: ignore
+        return {
+            "total_count": 0,
+            "completed_count": 0,
+            "incomplete_count": 0,
+            "completion_percentage": 0,
+            "has_todos": False,
+            "error": str(e),
+        }
+
+
+# Helper function to format dates
+def format_date_only(date_str):
+    """
+    Format a date string to show only the date part (YYYY-MM-DD).
+    
+    This helper function takes an ISO format datetime string and extracts
+    just the date portion for cleaner display.
+    
+    Args:
+        date_str: An ISO format datetime string.
+        
+    Returns:
+        A formatted date string in YYYY-MM-DD format.
+    """
+    try:
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        return dt.strftime("%Y-%m-%d")
+    except (ValueError, AttributeError):
+        return date_str
+
+
+# Add prompt capability
+@mcp.tool()
+async def todo_analysis(ctx: Context, todos: Optional[List[Dict[str, Any]]] = None) -> str:
+    """
+    Analyze the current state of todos.
+    
+    This tool demonstrates:
+    1. Creating a rich text response (markdown) for display
+    2. Advanced analysis of database records
+    3. Optional parameters to support different use cases
+    4. Grouping and categorizing data
+    
+    Args:
+        ctx: The MCP context object for logging and runtime services.
+        todos: Optional list of todos to analyze. If not provided, all todos will be fetched.
+        
+    Returns:
+        A detailed analysis of the todo items formatted in markdown.
+    """
+    try:
+        # Fetch todos if not provided
+        if todos is None:
+            todos = db.get_all_todos()
+        
+        # If no todos exist, return early with a simple message
+        if not todos:
+            return """
+            # Todo Analysis
+            
+            No todos found in the system. Add some todos to get started!
+            """
+        
+        # Group and categorize todos
+        completed_todos = [todo for todo in todos if todo.get("completed", False)]
+        incomplete_todos = [todo for todo in todos if not todo.get("completed", False)]
+        
+        # Calculate statistics
+        total = len(todos)
+        completed_count = len(completed_todos)
+        completion_percentage = (completed_count / total * 100) if total > 0 else 0
+        
+        # Find oldest and newest todos based on creation date
+        sorted_by_date = sorted(todos, key=lambda x: x.get("created_at", ""))
+        oldest_todo = sorted_by_date[0] if sorted_by_date else None
+        newest_todo = sorted_by_date[-1] if sorted_by_date else None
         
         # Count todos with due dates, and count overdue todos
         todos_with_due_dates = [todo for todo in todos if todo.get("due_date")]
@@ -205,96 +354,14 @@ async def get_todo_stats(ctx: Context) -> Dict[str, Any]:
                     # Skip todos with invalid date format
                     pass
         
-        return {
-            "total_count": total,
-            "completed_count": completed,
-            "incomplete_count": total - completed,
-            "completion_percentage": completion_percentage,
-            "has_todos": total > 0,
-            "todos_with_due_dates": len(todos_with_due_dates),
-            "overdue_todos": len(overdue_todos),
-            "upcoming_todos": len(upcoming_todos)
-        }
-    except Exception as e:
-        ctx.runtime.logger.error(f"Error getting todo stats: {str(e)}")  # type: ignore
-        return {
-            "error": str(e),
-        }
-
-
-# Helper function to format dates
-def format_date_only(date_str):
-    """Format a date string to show only the date part (YYYY-MM-DD)."""
-    try:
-        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-        return dt.strftime("%Y-%m-%d")
-    except (ValueError, AttributeError, TypeError):
-        return date_str
-
-
-# Add prompt capability
-@mcp.prompt()
-async def todo_analysis(ctx: Context, todos: Optional[List[Dict[str, Any]]] = None) -> str:
-    """
-    Analyze the current state of todos.
-
-    Args:
-        ctx: The MCP context.
-        todos: Optional list of todos to analyze. If not provided, all todos will be fetched.
-
-    Returns:
-        A detailed analysis of the todo items.
-    """
-    try:
-        if todos is None:
-            todos = db.get_all_todos()
-
-        total = len(todos)
-
-        if total == 0:
-            return """
-            # Todo Analysis
-            
-            There are currently no todos in the system. Start by creating a new todo!
-            """
-
-        completed = sum(1 for todo in todos if todo["completed"])
-        completion_percentage = (completed / total * 100) if total > 0 else 0
-
-        # Sort todos by creation date
-        sorted_todos = sorted(todos, key=lambda x: x["created_at"])
-        oldest_todo = sorted_todos[0] if sorted_todos else None
-        newest_todo = sorted_todos[-1] if sorted_todos else None
-
-        # Find todos by completion status
-        incomplete_todos = [todo for todo in todos if not todo["completed"]]
-        completed_todos = [todo for todo in todos if todo["completed"]]
-        
-        # Find todos with due dates
-        now = datetime.now()
-        overdue_todos = []
-        upcoming_todos = []
-        
-        for todo in incomplete_todos:
-            if todo.get("due_date"):
-                try:
-                    due_date = datetime.fromisoformat(todo["due_date"].replace("Z", "+00:00"))
-                    if due_date < now:
-                        overdue_todos.append(todo)
-                    else:
-                        upcoming_todos.append(todo)
-                except (ValueError, TypeError):
-                    # Skip todos with invalid date format
-                    pass
-
         # Create analysis prompt
         prompt = f"""
         # Todo Analysis
         
         ## Summary Statistics
         - Total todos: {total}
-        - Completed todos: {completed} ({completion_percentage:.1f}%)
-        - Incomplete todos: {total - completed} ({100 - completion_percentage:.1f}%)
+        - Completed todos: {completed_count} ({completion_percentage:.1f}%)
+        - Incomplete todos: {total - completed_count} ({100 - completion_percentage:.1f}%)
         """
         
         # Add due date statistics if relevant

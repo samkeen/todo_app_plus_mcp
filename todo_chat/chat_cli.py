@@ -4,6 +4,11 @@ Todo Chat CLI
 A simple command-line chat interface that connects to Claude and allows
 interaction with the Todo app via the MCP server.
 
+This module demonstrates:
+1. How to connect to an AI assistant (Claude) using the Anthropic API
+2. How to integrate with an MCP server to provide tool functionality
+3. How to create an interactive CLI chat interface using Rich and Typer
+
 Usage:
     python -m todo_chat.chat_cli
 
@@ -73,12 +78,27 @@ console = Console(theme=custom_theme)
 
 # TypedDict for our session structure
 class MCPSessionData(TypedDict):
+    """
+    TypedDict to represent an active MCP session.
+    
+    Attributes:
+        session: The MCP ClientSession object used to communicate with the MCP server
+        client: The underlying client context manager for the MCP connection
+    """
     session: ClientSession
     client: Any
 
 
 # Define TypedDict for tool definitions
 class ClaudeToolDefinition(TypedDict):
+    """
+    TypedDict to represent a Claude-compatible tool definition.
+    
+    Attributes:
+        name: The name of the tool as exposed to Claude
+        description: A human-readable description of what the tool does
+        input_schema: JSON Schema defining the input parameters for the tool
+    """
     name: str
     description: str
     input_schema: Dict[str, Any]
@@ -98,13 +118,25 @@ app = typer.Typer(help="Chat with Claude AI and manage todos")
 
 
 async def setup_mcp() -> bool:
-    """Set up MCP session and discover tools."""
+    """
+    Set up the MCP session and discover available tools.
+    
+    This function:
+    1. Establishes a connection to the MCP server via stdio
+    2. Initializes the session
+    3. Discovers all available tools from the MCP server
+    4. Formats the tools into Claude-compatible tool definitions
+    
+    Returns:
+        bool: True if setup was successful, False otherwise
+    """
     global mcp_session, tool_definitions
 
     console.print("[system]Connecting to MCP server...[/]")
 
     try:
-        # Set up MCP server connection
+        # Set up MCP server connection using stdio protocol
+        # This launches the server as a subprocess and communicates over stdin/stdout
         server_params = StdioServerParameters(
             command="python",
             args=["-m", "todo_mcp.server"],
@@ -264,123 +296,139 @@ async def setup_mcp() -> bool:
         return False
 
 
-async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
-    """Execute an MCP tool."""
+async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Any:
+    """
+    Execute an MCP tool with the provided input parameters.
+    
+    This function handles:
+    1. Finding the tool by name in the MCP session
+    2. Converting input parameters to the appropriate format
+    3. Executing the tool and handling any errors
+    4. Returning the result in a JSON-serializable format
+    
+    Args:
+        tool_name: The name of the MCP tool to execute
+        tool_input: A dictionary of input parameters for the tool
+    
+    Returns:
+        Any: The result of the tool execution, converted to a JSON-serializable format
+    
+    Raises:
+        Exception: If the tool execution fails or the tool is not found
+    """
     global mcp_session
 
     console.print(f"[tool]Executing tool: {tool_name}[/]")
-    console.print(f"[tool]Parameters: {json.dumps(tool_input, indent=2)}[/]")
+    console.print(f"[tool]Tool input: {json.dumps(tool_input, indent=2)}[/]")
+
+    if mcp_session is None:
+        raise Exception("MCP session not initialized")
 
     try:
-        if mcp_session is not None:
-            raw_result = await mcp_session["session"].call_tool(tool_name, tool_input)
-
-            # Convert the result to a serializable format
-            result_dict = make_json_serializable(raw_result)
-
-            # Print the result for debugging
-            try:
-                console.print(f"[tool]Result: {json.dumps(result_dict, indent=2)}[/]")
-            except TypeError as e:
-                console.print(f"[error]Result still not JSON serializable: {str(e)}[/]")
-                console.print(f"[tool]Raw Result: {str(result_dict)}[/]")
-
-                # Final fallback: Convert to a simple string representation
-                result_dict = {"result": str(result_dict)}
-
-            return result_dict
+        # Execute the tool with the provided parameters
+        result = await mcp_session["session"].call_tool(tool_name, tool_input)
+        
+        # Make the result JSON serializable for Claude
+        serializable_result = make_json_serializable(result)
+        console.print(f"[tool]Tool result: {json.dumps(serializable_result, indent=2)}[/]")
+        return serializable_result
     except Exception as e:
-        console.print(f"[error]Tool execution failed: {str(e)}[/]")
-
-    return {"error": "Tool execution failed"}
+        console.print(f"[error]Error executing tool: {str(e)}[/]")
+        raise
 
 
 def make_json_serializable(obj: Any) -> Any:
-    """Recursively convert an object to a JSON serializable format."""
-    if obj is None or isinstance(obj, (str, int, float, bool)):
-        # Basic types are already serializable
-        return obj
-
-    elif isinstance(obj, dict):
-        # Process each value in the dictionary
-        return {k: make_json_serializable(v) for k, v in obj.items()}
-
-    elif isinstance(obj, (list, tuple)):
-        # Process each item in the list/tuple
+    """
+    Recursively convert an object to a JSON serializable format.
+    
+    This function handles various Python types that are not natively JSON serializable:
+    - Datetime objects are converted to ISO format strings
+    - Sets are converted to lists
+    - Objects with a to_dict method are converted using that method
+    - Objects with __dict__ attribute are converted to dictionaries
+    
+    Args:
+        obj: The object to convert to a JSON serializable format
+    
+    Returns:
+        Any: A JSON serializable representation of the input object
+    """
+    # Handle None
+    if obj is None:
+        return None
+        
+    # Handle datetime objects
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+        
+    # Handle lists and tuples
+    if isinstance(obj, (list, tuple)):
         return [make_json_serializable(item) for item in obj]
-
-    elif hasattr(obj, "content") and isinstance(obj.content, list):
-        # Special handling for objects with a content field containing a list
-        result = {"content": []}
-
-        # Process each content item
-        for item in obj.content:
-            if hasattr(item, "text"):
-                # If the item has text, extract it
-                try:
-                    # Try to parse the text as JSON
-                    text_value = item.text
-                    try:
-                        json_obj = json.loads(text_value)
-                        result["content"].append(json_obj)
-                    except json.JSONDecodeError:
-                        # If not valid JSON, use as string
-                        result["content"].append(text_value)
-                except Exception:
-                    # Fallback to string representation
-                    result["content"].append(str(item))
-            else:
-                # Fallback for other types
-                result["content"].append(make_json_serializable(item))
-
-        # Add any other attributes
-        for attr_name in dir(obj):
-            if not attr_name.startswith("_") and attr_name != "content":
-                try:
-                    attr_value = getattr(obj, attr_name)
-                    if not callable(attr_value):
-                        result[attr_name] = make_json_serializable(attr_value)
-                except Exception:
-                    pass
-
-        return result
-
-    elif hasattr(obj, "__dict__"):
-        # For objects with a __dict__, convert it recursively
+        
+    # Handle dictionaries
+    if isinstance(obj, dict):
+        return {k: make_json_serializable(v) for k, v in obj.items()}
+        
+    # Handle sets
+    if isinstance(obj, set):
+        return [make_json_serializable(item) for item in obj]
+    
+    # Handle custom objects with to_dict method
+    if hasattr(obj, "to_dict") and callable(getattr(obj, "to_dict")):
+        return make_json_serializable(obj.to_dict())
+        
+    # Handle custom objects with __dict__ attribute
+    if hasattr(obj, "__dict__"):
         return make_json_serializable(obj.__dict__)
-
-    elif hasattr(obj, "to_dict") and callable(getattr(obj, "to_dict")):
-        # For objects with a to_dict method, use it
-        try:
-            return make_json_serializable(obj.to_dict())
-        except Exception:
-            pass
-
-    # Final fallback: convert to string
-    return str(obj)
+        
+    # For everything else, try to use it as is
+    # If it's not JSON serializable, json.dumps will raise an exception later
+    return obj
 
 
 def start_spinner(message: str = "Thinking") -> None:
-    """Start a spinner animation in the terminal."""
+    """
+    Start a spinner animation in the terminal to indicate processing.
+    
+    This provides visual feedback to the user during long-running operations
+    like waiting for a response from Claude.
+    
+    Args:
+        message: The message to display alongside the spinner
+    """
     global spinner_live
-
-    spinner = Spinner("dots", text=f"{message}...")
-    spinner_live = Live(spinner, refresh_per_second=10)
+    spinner = Spinner("dots", text=f"[spinner_text]{message}...[/]")
+    spinner_live = Live(spinner, console=console, refresh_per_second=10)
     spinner_live.start()
 
 
 def stop_spinner() -> None:
-    """Stop the spinner animation and clear the line."""
+    """
+    Stop the spinner animation and clear the line.
+    
+    This should be called when the operation the spinner was indicating
+    has completed, either successfully or with an error.
+    """
     global spinner_live
-
     if spinner_live:
         spinner_live.stop()
         spinner_live = None
 
 
 async def chat_loop() -> None:
-    """Main chat loop."""
-    global messages, mcp_session
+    """
+    Main chat loop that handles the conversation with Claude.
+    
+    This function:
+    1. Sets up the MCP session
+    2. Initializes the chat with the system message
+    3. Processes user input and sends it to Claude
+    4. Handles Claude's responses, including tool calls
+    5. Manages the chat history and message format for Claude
+    
+    The loop continues until the user exits with Ctrl+C or an unhandled exception occurs.
+    """
+    global messages, tool_definitions
 
     console.print(
         Panel.fit(
@@ -582,7 +630,14 @@ For any user input that might reasonably be interpreted as a task, convert it to
 
 @app.command()
 def main() -> None:
-    """Run the Todo Chat CLI."""
+    """
+    Run the Todo Chat CLI.
+    
+    This is the entry point for the application, which:
+    1. Sets up the asyncio event loop
+    2. Runs the chat_loop coroutine
+    3. Handles any unhandled exceptions
+    """
     try:
         asyncio.run(chat_loop())
     except Exception as e:

@@ -1,7 +1,7 @@
-- [ ] Add due date to todo items
-    - [ ] Update API
-    - [ ] Update UI
-    - [ ] Update MCP server
-    - [ ] Update system prompt to include due date
+- [x] Add due date to todo items
+    - [x] Update API
+    - [x] Update UI
+    - [x] Update MCP server
+    - [x] Update system prompt to include due date
 - [ ] Add documents to key code files
 - [ ] Review and update README and ./docs
