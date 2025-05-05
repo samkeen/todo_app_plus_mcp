@@ -32,12 +32,12 @@ This is an educational application that uses `uv` for dependency management with
 
 ## Running the Application
 
-The application consists of three main components that can be run independently or together:
+The application consists of four main components that can be run independently or together:
 
 1. The Todo API (Backend) - Serves data via REST endpoints
 2. The Todo UI (Frontend) - Provides a web interface
 3. The Todo MCP Server - Allows AI assistants to interact with the Todo app
-4. The Todo Chat CLI (Chat interface for interacting with the Todo app)
+4. The Todo Chat CLI - Provides a command-line chat interface for interacting with Todo app via Claude and MCP
 
 ### Running the Todo API (Backend)
 
@@ -78,6 +78,18 @@ The Model Context Protocol (MCP) server allows AI assistants like Claude to inte
 uv run python -m todo_mcp.server
 ```
 
+### Running the Todo Chat CLI
+
+The Chat CLI provides a command-line interface for interacting with Claude AI and the Todo app via MCP.
+
+```bash
+# Set your Anthropic API key in .env file
+echo "ANTHROPIC_API_KEY=your_api_key_here" > .env
+
+# Run the Chat CLI
+uv run python -m todo_chat.chat_cli
+```
+
 ## Data Storage
 
 The application uses a JSON file for data storage:
@@ -93,6 +105,16 @@ The application uses a JSON file for data storage:
 - `PUT /todos/{todo_id}`: Update a todo
 - `DELETE /todos/{todo_id}`: Delete a todo
 
+## Todo Features
+
+Each todo item has the following properties:
+
+- **Title**: A brief description of the task (required)
+- **Description**: A more detailed explanation (optional)
+- **Completion Status**: Whether the todo is completed
+- **Due Date**: Optional deadline for the todo item
+- **Created/Updated Timestamps**: Automatically tracked
+
 ## Model Context Protocol (MCP) Server
 
 The MCP server implements the [Model Context Protocol](https://modelcontextprotocol.io/specification/2025-03-26), allowing AI assistants like Claude to directly interact with the Todo application.
@@ -103,8 +125,8 @@ The MCP server provides the following tools:
 
 - `list_todos`: List all todos in the system
 - `get_todo`: Get a specific todo by ID
-- `create_todo`: Create a new todo item
-- `update_todo`: Update an existing todo item
+- `create_todo`: Create a new todo item with title, description, completion status, and optional due date
+- `update_todo`: Update an existing todo item (any field can be selectively updated)
 - `delete_todo`: Delete a todo item by ID
 - `get_todo_stats`: Get statistics about todos in the system
 
@@ -112,29 +134,22 @@ The MCP server provides the following tools:
 
 The MCP server also provides prompts for more complex analysis:
 
-- `todo_analysis`: Analyze the current state of todos and provide insights
+- `todo_analysis`: Analyze the current state of todos and provide insights including overdue items, completion rates, and recommendations
 
 ### Testing with the MCP Inspector
 
 The easiest way to test your MCP server is using the built-in MCP Inspector tool:
 
 ```bash
-
 # Start the MCP Inspector
-❯ uv run mcp dev todo_mcp/server.py
-Need to install the following packages:
-@modelcontextprotocol/inspector@0.11.0
-Ok to proceed? (y) y
-
-Starting MCP inspector...
-⚙️ Proxy server listening on port 6277
-🔍 MCP Inspector is up and running at http://127.0.0.1:6274 🚀
+uv run mcp dev todo_mcp/server.py
 ```
 
 You can now open http://127.0.0.1:6274 in your browser to access the MCP Inspector.
 After clicking the **Connect** button you will see this
 ![](./docs/img/mcp-inspector.png)
-And you can now test the tools and prompts. For example, you can call the `list_todos` tool to see all todos. 
+
+And you can now test the tools and prompts. For example, you can call the `list_todos` tool to see all todos:
 1. Click on the **Tools** tab
 2. Select the `list_todos` tool
 3. Click on the **Run tool** button
