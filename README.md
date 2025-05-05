@@ -7,6 +7,7 @@ A Todo application with a FastAPI backend, a Flask UI frontend, and a Model Cont
 - `todo_api/` - FastAPI backend
 - `todo_ui/` - Flask UI frontend
 - `todo_mcp/` - Model Context Protocol server
+- `todo_chat/` - Chat interface for interacting with the Todo app
 - `todo_data.sample.json` - Sample data that will be used to create todo_data.json on first run
 
 ## Overview
@@ -36,6 +37,7 @@ The application consists of three main components that can be run independently 
 1. The Todo API (Backend) - Serves data via REST endpoints
 2. The Todo UI (Frontend) - Provides a web interface
 3. The Todo MCP Server - Allows AI assistants to interact with the Todo app
+4. The Todo Chat CLI (Chat interface for interacting with the Todo app)
 
 ### Running the Todo API (Backend)
 
