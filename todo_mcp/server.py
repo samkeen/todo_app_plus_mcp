@@ -13,7 +13,6 @@ interact with external tools and systems. This server demonstrates:
 4. How to handle errors and provide meaningful feedback
 """
 
-import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -30,10 +29,9 @@ if str(parent_dir) not in sys.path:
 
 # Import the Todo API database functions
 from todo_api import json_db as db
-from todo_api.models import TodoBase, TodoCreate, TodoUpdate, TodoResponse
 
 # Create the FastMCP app
-mcp = FastMCP("Todo MCP Server")
+mcp = FastMCP("Todo MCP Server")  # Initialize the MCP server with a name
 
 
 # Define Pydantic models for MCP tools
@@ -75,7 +73,7 @@ class TodoUpdateData(BaseModel):
 # Define MCP Tools
 
 
-@mcp.tool()
+@mcp.tool()  # Register this function as an MCP tool
 async def list_todos(ctx: Context) -> List[Dict[str, Any]]:
     """
     List all todos in the system.
@@ -100,7 +98,7 @@ async def list_todos(ctx: Context) -> List[Dict[str, Any]]:
         return []
 
 
-@mcp.tool()
+@mcp.tool()  # Register this function as an MCP tool
 async def get_todo(todo_id: str, ctx: Context) -> Optional[Dict[str, Any]]:
     """
     Get a specific todo by its ID.
@@ -119,11 +117,12 @@ async def get_todo(todo_id: str, ctx: Context) -> Optional[Dict[str, Any]]:
         todo = db.get_todo(todo_id)
         return todo
     except Exception as e:
-        ctx.runtime.logger.error(f"Error retrieving todo {todo_id}: {str(e)}")  # type: ignore
+        # Log the error using the MCP context logger
+        ctx.runtime.logger.error(f"Error getting todo {todo_id}: {str(e)}")  # type: ignore
         return None
 
 
-@mcp.tool()
+@mcp.tool()  # Register this function as an MCP tool
 async def create_todo(todo: TodoData, ctx: Context) -> Dict[str, Any]:
     """
     Create a new todo item.
@@ -134,7 +133,7 @@ async def create_todo(todo: TodoData, ctx: Context) -> Dict[str, Any]:
     3. Proper error handling with meaningful return values
     
     Args:
-        todo: The todo item details to create, validated by the TodoData model.
+        todo: The todo item data to create, defined by the TodoData model.
         ctx: The MCP context object for logging and runtime services.
         
     Returns:
@@ -150,10 +149,9 @@ async def create_todo(todo: TodoData, ctx: Context) -> Dict[str, Any]:
         )
         return created_todo
     except Exception as e:
-        # Log the error but also return a structured error response
-        # This ensures the AI gets meaningful feedback it can interpret
+        # Log the error using the MCP context logger
         ctx.runtime.logger.error(f"Error creating todo: {str(e)}")  # type: ignore
-        # Return a minimal error object that matches the expected structure
+        # Return a meaningful error response
         return {
             "id": "error",
             "title": "Error creating todo",
@@ -165,7 +163,7 @@ async def create_todo(todo: TodoData, ctx: Context) -> Dict[str, Any]:
         }
 
 
-@mcp.tool()
+@mcp.tool()  # Register this function as an MCP tool
 async def update_todo(
     todo_id: str, changes: TodoUpdateData, ctx: Context
 ) -> Optional[Dict[str, Any]]:
@@ -175,11 +173,11 @@ async def update_todo(
     This tool demonstrates:
     1. Combining a simple parameter (todo_id) with a complex parameter (changes)
     2. Using a model specifically designed for updates with optional fields
-    3. Returning appropriate results based on success or failure
+    3. Partial updates where only specified fields are changed
     
     Args:
         todo_id: The unique identifier of the todo to update.
-        changes: The fields to update on the todo item, validated by TodoUpdateData.
+        changes: The changes to apply to the todo item.
         ctx: The MCP context object for logging and runtime services.
         
     Returns:
@@ -193,11 +191,12 @@ async def update_todo(
         updated_todo = db.update_todo(todo_id, update_data)
         return updated_todo
     except Exception as e:
+        # Log the error using the MCP context logger
         ctx.runtime.logger.error(f"Error updating todo {todo_id}: {str(e)}")  # type: ignore
         return None
 
 
-@mcp.tool()
+@mcp.tool()  # Register this function as an MCP tool
 async def delete_todo(todo_id: str, ctx: Context) -> bool:
     """
     Delete a todo item by its ID.
@@ -215,15 +214,16 @@ async def delete_todo(todo_id: str, ctx: Context) -> bool:
         True if the todo was deleted, False if not found or if an error occurred.
     """
     try:
-        # Delete the todo and return the result
-        result = db.delete_todo(todo_id)
-        return result
+        # Delete the todo from the database
+        success = db.delete_todo(todo_id)
+        return success
     except Exception as e:
+        # Log the error using the MCP context logger
         ctx.runtime.logger.error(f"Error deleting todo {todo_id}: {str(e)}")  # type: ignore
         return False
 
 
-@mcp.tool()
+@mcp.tool()  # Register this function as an MCP tool
 async def get_todo_stats(ctx: Context) -> Dict[str, Any]:
     """
     Get statistics about todos in the system.
@@ -238,26 +238,28 @@ async def get_todo_stats(ctx: Context) -> Dict[str, Any]:
         and whether there are any todos in the system.
     """
     try:
-        # Fetch all todos to compute statistics
+        # Fetch all todos
         todos = db.get_all_todos()
         
-        # Count totals and completed
+        # Calculate statistics
         total = len(todos)
-        completed = sum(1 for todo in todos if todo.get("completed", False))
+        completed_count = sum(1 for todo in todos if todo.get("completed", False))
         
-        # Compute completion percentage, handling division by zero
-        completion_percentage = (completed / total * 100) if total > 0 else 0
+        # Calculate completion percentage safely (avoid division by zero)
+        completion_percentage = (completed_count / total * 100) if total > 0 else 0
         
         # Return comprehensive statistics
         return {
             "total_count": total,
-            "completed_count": completed,
-            "incomplete_count": total - completed,
+            "completed_count": completed_count,
+            "incomplete_count": total - completed_count,
             "completion_percentage": round(completion_percentage, 2),
             "has_todos": total > 0,
         }
     except Exception as e:
+        # Log the error using the MCP context logger
         ctx.runtime.logger.error(f"Error getting todo stats: {str(e)}")  # type: ignore
+        # Return a default stats object in case of error
         return {
             "total_count": 0,
             "completed_count": 0,
@@ -269,7 +271,7 @@ async def get_todo_stats(ctx: Context) -> Dict[str, Any]:
 
 
 # Helper function to format dates
-def format_date_only(date_str):
+def format_date_only(date_str: str) -> str:
     """
     Format a date string to show only the date part (YYYY-MM-DD).
     
@@ -283,14 +285,17 @@ def format_date_only(date_str):
         A formatted date string in YYYY-MM-DD format.
     """
     try:
+        # Parse the ISO format string to a datetime object
         dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        # Return just the date part formatted as YYYY-MM-DD
         return dt.strftime("%Y-%m-%d")
     except (ValueError, AttributeError):
+        # If the date is invalid, return the original string
         return date_str
 
 
 # Add prompt capability
-@mcp.tool()
+@mcp.tool()  # Register this function as an MCP tool
 async def todo_analysis(ctx: Context, todos: Optional[List[Dict[str, Any]]] = None) -> str:
     """
     Analyze the current state of todos.
@@ -299,7 +304,8 @@ async def todo_analysis(ctx: Context, todos: Optional[List[Dict[str, Any]]] = No
     1. Creating a rich text response (markdown) for display
     2. Advanced analysis of database records
     3. Optional parameters to support different use cases
-    4. Grouping and categorizing data
+    4. Complex data processing and formatting
+    5. Personalized recommendations based on data analysis
     
     Args:
         ctx: The MCP context object for logging and runtime services.
@@ -469,4 +475,4 @@ async def todo_analysis(ctx: Context, todos: Optional[List[Dict[str, Any]]] = No
 
 # Run the server
 if __name__ == "__main__":
-    mcp.run()
+    mcp.run()  # Start the MCP server when this script is executed directly

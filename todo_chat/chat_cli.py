@@ -108,10 +108,10 @@ class ClaudeToolDefinition(TypedDict):
 anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 # Global variables
-mcp_session: Optional[MCPSessionData] = None
-tool_definitions: List[ClaudeToolDefinition] = []
-messages: List[MessageParam] = []
-spinner_live: Optional[Live] = None
+mcp_session: Optional[MCPSessionData] = None  # Stores the active MCP session
+tool_definitions: List[ClaudeToolDefinition] = []  # List of tools available to Claude
+messages: List[MessageParam] = []  # Conversation history for Claude
+spinner_live: Optional[Live] = None  # Rich spinner for visual feedback
 
 # Create a Typer app
 app = typer.Typer(help="Chat with Claude AI and manage todos")
