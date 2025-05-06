@@ -23,6 +23,8 @@ dependencies = [
     "rich>=14.0.0",
     "typer>=0.15.3",
     "fastmcp>=2.2.8",
+    "langchain-anthropic>=0.3.12",
+    "langchain-mcp-adapters>=0.0.10",
 ]
 
 [build-system]

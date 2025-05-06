@@ -1,7 +1,7 @@
 """
 Todo Chat CLI
 
-A simplified chat interface for interacting with Claude and the Todo MCP server.
+A simplified chat interface using FastMCP's Client and Anthropic's SDK.
 """
 
 import os
@@ -15,9 +15,8 @@ from rich.theme import Theme
 from rich.spinner import Spinner
 from rich.live import Live
 from dotenv import load_dotenv
+from fastmcp import Client
 from anthropic import AsyncAnthropic
-from mcp.client.session import ClientSession
-from mcp.client.stdio import StdioServerParameters, stdio_client
 from typing import List, Dict, Any, Optional
 
 # Load environment variables
@@ -30,8 +29,7 @@ if not ANTHROPIC_API_KEY:
     exit(1)
 
 # Configuration
-MODEL = os.getenv("MODEL_NAME", "claude-3-5-haiku-latest")  # Update to your preferred Claude model
-MAX_TOKENS = 4096
+MODEL = os.getenv("MODEL") or "claude-3-5-haiku-latest"
 
 # Set up console for pretty output
 custom_theme = Theme(
@@ -52,52 +50,6 @@ app = typer.Typer(help="Chat with Claude AI and manage todos")
 spinner_live: Optional[Live] = None
 
 
-def make_json_serializable(obj):
-    """
-    Convert an object to a JSON serializable format.
-
-    Handles:
-    - Objects with 'text' attribute (like TextContent)
-    - Objects with __dict__ attribute
-    - Lists and dictionaries (recursively)
-    - Basic types (strings, numbers, etc.)
-    - Datetime objects
-
-    Returns a JSON-serializable representation of the input object.
-    """
-    # Handle None
-    if obj is None:
-        return None
-
-    # Handle datetime objects
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-
-    # Handle objects with text attribute (like TextContent)
-    if hasattr(obj, "text"):
-        return obj.text
-
-    # Handle lists and tuples
-    if isinstance(obj, (list, tuple)):
-        return [make_json_serializable(item) for item in obj]
-
-    # Handle dictionaries
-    if isinstance(obj, dict):
-        return {k: make_json_serializable(v) for k, v in obj.items()}
-
-    # Handle objects with __dict__ attribute (custom objects)
-    if hasattr(obj, "__dict__"):
-        return {
-            k: make_json_serializable(v) for k, v in obj.__dict__.items() if not k.startswith("_")
-        }
-
-    # Try to convert to string for anything else
-    try:
-        return str(obj)
-    except:
-        return "Unserializable object"
-
-
 def start_spinner(message: str = "Thinking") -> None:
     """Start a spinner animation for visual feedback."""
     global spinner_live
@@ -112,6 +64,22 @@ def stop_spinner() -> None:
     if spinner_live:
         spinner_live.stop()
         spinner_live = None
+
+
+def make_json_serializable(obj):
+    """Convert an object to a JSON serializable format."""
+    if hasattr(obj, "text"):
+        return obj.text
+    elif hasattr(obj, "__dict__"):
+        return {
+            k: make_json_serializable(v) for k, v in obj.__dict__.items() if not k.startswith("_")
+        }
+    elif isinstance(obj, list):
+        return [make_json_serializable(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {k: make_json_serializable(v) for k, v in obj.items()}
+    else:
+        return str(obj)
 
 
 async def chat_loop():
@@ -152,210 +120,177 @@ Key behaviors:
         # Initialize message history
         messages = []
 
-        try:
-            # Initialize MCP client connecting to the local server
-            console.print("[system]Connecting to MCP server...[/]")
+        console.print("[system]Connecting to MCP server...[/]")
 
-            # Use StdioServerParameters for module-style invocation
-            server_params = StdioServerParameters(
-                command="python",
-                args=["-m", "todo_mcp.server"],
-            )
+        # Connect to the MCP server using a relative file path rather than module path
+        client = Client("todo_mcp/server.py")
 
-            # Use async with for context managers
-            async with stdio_client(server_params) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
+        # Use async context manager to handle connection lifecycle
+        async with client:
+            # List available tools
+            tools = await client.list_tools()
+            console.print(f"[system]Connected to MCP server with {len(tools)} tools[/]")
 
-                    # List available tools to confirm connection
-                    tools_result = await session.list_tools()
-                    tools = tools_result.tools
-                    console.print(f"[system]Connected to MCP server with {len(tools)} tools[/]")
+            # Format tools for Anthropic
+            anthropic_tools = []
+            for tool in tools:
+                anthropic_tools.append(
+                    {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "input_schema": tool.inputSchema,
+                    }
+                )
 
-                    # Format tools for Anthropic
-                    anthropic_tools = []
-                    for tool in tools:
-                        tool_name = getattr(tool, "name", "unknown")
-                        tool_description = getattr(tool, "description", "")
-                        tool_schema = getattr(tool, "inputSchema", {})
+            # Main chat loop
+            while True:
+                # Get user input
+                user_input = typer.prompt("[user]You[/]")
 
-                        anthropic_tools.append(
-                            {
-                                "name": tool_name,
-                                "description": tool_description,
-                                "input_schema": tool_schema,
-                            }
-                        )
+                # Check for exit command
+                if user_input.lower() in ["exit", "quit", "bye"]:
+                    console.print("[assistant]Todo Assistant: Goodbye! Have a great day![/]")
+                    break
 
-                    # Main chat loop
-                    while True:
-                        # Get user input
-                        user_input = typer.prompt("[user]You[/]")
+                # Add user message to history
+                messages.append({"role": "user", "content": user_input})
 
-                        # Check for exit command
-                        if user_input.lower() in ["exit", "quit", "bye"]:
+                # Show thinking indicator
+                start_spinner()
+
+                try:
+                    # Send message to Claude with MCP tools
+                    response = await anthropic.messages.create(
+                        model=MODEL,
+                        max_tokens=4096,
+                        system=system_message,
+                        messages=messages,
+                        tools=anthropic_tools,
+                    )
+
+                    # Stop spinner after receiving response
+                    stop_spinner()
+
+                    # Process the response
+                    need_follow_up = False
+                    follow_up_messages = messages.copy()
+
+                    for content_block in response.content:
+                        if content_block.type == "text":
+                            # Regular text response
                             console.print(
-                                "[assistant]Todo Assistant: Goodbye! Have a great day![/]"
-                            )
-                            break
-
-                        # Add user message to history
-                        messages.append({"role": "user", "content": user_input})
-
-                        # Show thinking indicator
-                        start_spinner()
-
-                        try:
-                            # Send message to Claude with MCP tools
-                            response = await anthropic.messages.create(
-                                model=MODEL,
-                                max_tokens=MAX_TOKENS,
-                                system=system_message,
-                                messages=messages,
-                                tools=anthropic_tools,
+                                Panel(f"[assistant]{content_block.text}[/]", border_style="green")
                             )
 
-                            # Stop spinner after receiving response
-                            stop_spinner()
+                            # Add to message history
+                            messages.append({"role": "assistant", "content": content_block.text})
 
-                            # Process the response
-                            need_follow_up = False
-                            follow_up_messages = messages.copy()
+                        elif content_block.type == "tool_use":
+                            # Tool call
+                            need_follow_up = True
+                            tool_name = content_block.name
+                            tool_input = content_block.input
+                            tool_id = content_block.id
 
-                            for content_block in response.content:
-                                if content_block.type == "text":
-                                    # Regular text response
-                                    console.print(
-                                        Panel(
-                                            f"[assistant]{content_block.text}[/]",
-                                            border_style="green",
-                                        )
-                                    )
+                            # Log the tool call
+                            console.print(f"[tool]Calling tool: {tool_name}[/]")
+                            console.print(
+                                f"[tool]Input: {json.dumps(make_json_serializable(tool_input), indent=2)}[/]"
+                            )
 
-                                    # Add to message history
-                                    messages.append(
-                                        {"role": "assistant", "content": content_block.text}
-                                    )
-
-                                elif content_block.type == "tool_use":
-                                    # Tool call
-                                    need_follow_up = True
-                                    tool_name = content_block.name
-                                    tool_input = content_block.input
-                                    tool_id = content_block.id
-
-                                    # Log the tool call
-                                    console.print(f"[tool]Calling tool: {tool_name}[/]")
-                                    console.print(
-                                        f"[tool]Input: {json.dumps(tool_input, indent=2)}[/]"
-                                    )
-
-                                    # Add tool use to follow-up messages
-                                    follow_up_messages.append(
+                            # Add tool use to follow-up messages
+                            follow_up_messages.append(
+                                {
+                                    "role": "assistant",
+                                    "content": [
                                         {
-                                            "role": "assistant",
-                                            "content": [
-                                                {
-                                                    "type": "tool_use",
-                                                    "name": tool_name,
-                                                    "id": tool_id,
-                                                    "input": tool_input,
-                                                }
-                                            ],
+                                            "type": "tool_use",
+                                            "name": tool_name,
+                                            "id": tool_id,
+                                            "input": make_json_serializable(tool_input),
                                         }
-                                    )
+                                    ],
+                                }
+                            )
 
-                                    try:
-                                        # Execute the tool
-                                        result = await session.call_tool(tool_name, tool_input)
+                            try:
+                                # Execute the tool - FastMCP's Client handles serialization
+                                result = await client.call_tool(tool_name, tool_input)
 
-                                        # Use the serialization function to handle complex response
-                                        serialized_result = make_json_serializable(result)
-                                        result_text = json.dumps(serialized_result)
-
-                                        # Log the result
-                                        console.print(f"[tool]Result: {result_text}[/]")
-
-                                        # Add tool result to follow-up messages
-                                        follow_up_messages.append(
-                                            {
-                                                "role": "user",
-                                                "content": [
-                                                    {
-                                                        "type": "tool_result",
-                                                        "tool_use_id": tool_id,
-                                                        "content": result_text,
-                                                    }
-                                                ],
-                                            }
-                                        )
-
-                                    except Exception as e:
-                                        error_message = f"Error executing tool: {str(e)}"
-                                        console.print(f"[error]{error_message}[/]")
-
-                                        # Add error message to follow-up messages
-                                        follow_up_messages.append(
-                                            {
-                                                "role": "user",
-                                                "content": [
-                                                    {
-                                                        "type": "tool_result",
-                                                        "tool_use_id": tool_id,
-                                                        "content": error_message,
-                                                    }
-                                                ],
-                                            }
-                                        )
-
-                            # If there were tool calls, get Claude's final response
-                            if need_follow_up:
-                                start_spinner("Processing results")
-
-                                final_response = await anthropic.messages.create(
-                                    model=MODEL,
-                                    max_tokens=MAX_TOKENS,
-                                    system=system_message,
-                                    messages=follow_up_messages,
+                                # Log the result
+                                console.print(
+                                    f"[tool]Result: {json.dumps(make_json_serializable(result), indent=2)}[/]"
                                 )
 
-                                stop_spinner()
+                                # Add tool result to follow-up messages
+                                follow_up_messages.append(
+                                    {
+                                        "role": "user",
+                                        "content": [
+                                            {
+                                                "type": "tool_result",
+                                                "tool_use_id": tool_id,
+                                                "content": json.dumps(
+                                                    make_json_serializable(result), indent=2
+                                                ),
+                                            }
+                                        ],
+                                    }
+                                )
 
-                                # Process the final response
-                                for content_block in final_response.content:
-                                    if content_block.type == "text":
-                                        console.print(
-                                            Panel(
-                                                f"[assistant]{content_block.text}[/]",
-                                                border_style="green",
-                                            )
-                                        )
+                            except Exception as e:
+                                error_message = f"Error executing tool: {str(e)}"
+                                console.print(f"[error]{error_message}[/]")
 
-                                        # Add to message history
-                                        messages.append(
-                                            {"role": "assistant", "content": content_block.text}
-                                        )
+                                # Add error message to follow-up messages
+                                follow_up_messages.append(
+                                    {
+                                        "role": "user",
+                                        "content": [
+                                            {
+                                                "type": "tool_result",
+                                                "tool_use_id": tool_id,
+                                                "content": error_message,
+                                            }
+                                        ],
+                                    }
+                                )
 
-                        except Exception as e:
-                            # Stop spinner if there was an error
-                            stop_spinner()
-                            console.print(f"[error]Error: {str(e)}[/]")
+                    # If there were tool calls, get Claude's final response
+                    if need_follow_up:
+                        start_spinner("Processing results")
 
-        except Exception as e:
-            console.print(f"[error]Failed to connect to MCP server: {str(e)}[/]")
-            console.print(
-                f"[system]Please make sure the server is running with: python -m todo_mcp.server[/]"
-            )
+                        final_response = await anthropic.messages.create(
+                            model=MODEL,
+                            max_tokens=4096,
+                            system=system_message,
+                            messages=follow_up_messages,
+                        )
 
-    except KeyboardInterrupt:
-        # Handle keyboard interrupt gracefully
-        stop_spinner()
-        console.print("\n[system]Chat session ended by user.[/]")
+                        stop_spinner()
+
+                        # Process the final response
+                        for content_block in final_response.content:
+                            if content_block.type == "text":
+                                console.print(
+                                    Panel(
+                                        f"[assistant]{content_block.text}[/]", border_style="green"
+                                    )
+                                )
+
+                                # Add to message history
+                                messages.append(
+                                    {"role": "assistant", "content": content_block.text}
+                                )
+
+                except Exception as e:
+                    # Stop spinner if there was an error
+                    stop_spinner()
+                    console.print(f"[error]Error: {str(e)}[/]")
 
     except Exception as e:
-        # Handle unhandled exceptions
-        stop_spinner()
-        console.print(f"[error]Unexpected error: {str(e)}[/]")
+        console.print(f"[error]Failed to connect to MCP server: {str(e)}[/]")
+        console.print(f"[system]Please make sure the server file exists at todo_mcp/server.py[/]")
 
     finally:
         # Make sure spinner is stopped
