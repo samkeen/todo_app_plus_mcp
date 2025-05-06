@@ -22,15 +22,6 @@ from typing import List, Dict, Any, Optional
 # Load environment variables
 load_dotenv()
 
-# Check for API key
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-if not ANTHROPIC_API_KEY:
-    print("Error: ANTHROPIC_API_KEY not found. Set it in .env file.")
-    exit(1)
-
-# Configuration
-MODEL = os.getenv("MODEL") or "claude-3-5-haiku-latest"
-
 # Set up console for pretty output
 custom_theme = Theme(
     {
@@ -42,6 +33,17 @@ custom_theme = Theme(
     }
 )
 console = Console(theme=custom_theme)
+
+# Check for API key
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+if not ANTHROPIC_API_KEY:
+    console.print("Error: ANTHROPIC_API_KEY not found. Set it in .env file.")
+    exit(1)
+
+# Configuration
+MODEL = os.getenv("MODEL") or "claude-3-5-haiku-latest"
+console.print(f"Using model: {MODEL}. Set it in .env file if you want to use a different model.")
+
 
 # Create Typer app
 app = typer.Typer(help="Chat with Claude AI and manage todos")
@@ -219,7 +221,7 @@ Key behaviors:
 
                                 # Log the result
                                 console.print(
-                                    f"[tool]Result: {json.dumps(make_json_serializable(result), indent=2)}[/]"
+                                    f"[tool]Result from MCP server: {json.dumps(make_json_serializable(result), indent=2)}[/]"
                                 )
 
                                 # Add tool result to follow-up messages
