@@ -3,5 +3,6 @@
     - [x] Update UI
     - [x] Update MCP server
     - [x] Update system prompt to include due date
-- [ ] Add documents to key code files
-- [ ] Review and update README and ./docs
+- [x] Add documents to key code files
+- [x] Review and update README and ./docs
+- [ ] Review FastMCP implementation
